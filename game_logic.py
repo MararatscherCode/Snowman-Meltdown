@@ -1,6 +1,12 @@
+"""Game logic for the Snowman Meltdown game.
+
+This module exposes functions to run the game loop and helpers used by the
+command-line entrypoint in ``snowman.py``.
+"""
+
 from ascii_art import STAGES
 import random
-from typing import Set
+from typing import Set, Tuple
 
 # Words to guess
 WORDS = ["python", "git", "github", "snowman", "meltdown"]
@@ -14,9 +20,18 @@ def get_random_word() -> str:
 
 
 def display_game_state(mistakes: int, secret_word: str, guessed_letters: Set[str]) -> None:
+    """Print the current snowman ASCII art and the masked secret word.
+
+    Args:
+        mistakes: Current number of mistakes (index into STAGES).
+        secret_word: Word the player is trying to guess.
+        guessed_letters: Set of letters the player has guessed.
+    """
     idx = min(mistakes, MAX_MISTAKES)
     print(STAGES[idx])
-    display_word = " ".join([c if c in guessed_letters else "_" for c in secret_word])
+    display_word = " ".join(
+        [c if c in guessed_letters else "_" for c in secret_word]
+    )
     print("Word:", display_word)
     print(f"Mistakes: {mistakes}/{MAX_MISTAKES}")
     if guessed_letters:
@@ -25,7 +40,49 @@ def display_game_state(mistakes: int, secret_word: str, guessed_letters: Set[str
 
 
 def is_word_guessed(secret_word: str, guessed_letters: Set[str]) -> bool:
+    """Return True when every character of ``secret_word`` is in
+    ``guessed_letters``.
+    """
     return all(ch in guessed_letters for ch in secret_word)
+
+
+def is_valid_letter(guess: str) -> bool:
+    """Return True if ``guess`` is a single alphabetic character.
+
+    This small helper keeps validation logic separate from I/O.
+    """
+    return len(guess) == 1 and guess.isalpha()
+
+
+def process_single_letter_guess(
+    guess: str, secret_word: str, guessed_letters: Set[str]
+) -> Tuple[int, str]:
+    """Process a single-letter guess.
+
+    Returns a tuple (mistake_increment, message). The function updates
+    ``guessed_letters`` in-place.
+    """
+    if guess in guessed_letters:
+        return 0, "You've already guessed that letter."
+
+    guessed_letters.add(guess)
+    if guess in secret_word:
+        return 0, f"Good guess: '{guess}' is in the word!"
+
+    return 1, f"Sorry, '{guess}' is not in the word."
+
+
+def process_full_word_guess(guess: str, secret_word: str, guessed_letters: Set[str]) -> Tuple[int, str]:
+    """Process a full-word guess and return (mistake_increment, message).
+
+    If the guess is correct the function adds all letters from the secret
+    word to ``guessed_letters``.
+    """
+    if guess == secret_word:
+        guessed_letters.update(secret_word)
+        return 0, "Fantastic — you guessed the full word!"
+
+    return 1, "That's not the correct word."
 
 
 def play_game() -> None:
@@ -46,28 +103,20 @@ def play_game() -> None:
                 print("Please type a letter or word and press Enter.")
                 continue
 
-            # Single-letter guess
-            if len(guess) == 1:
-                if not guess.isalpha():
-                    print("Please enter a valid letter (a-z).")
-                    continue
-                if guess in guessed_letters:
-                    print("You've already guessed that letter.")
-                    continue
-                guessed_letters.add(guess)
-                if guess in secret_word:
-                    print(f"Good guess: '{guess}' is in the word!")
-                else:
-                    mistakes += 1
-                    print(f"Sorry, '{guess}' is not in the word.")
+            if is_valid_letter(guess):
+                inc, msg = process_single_letter_guess(
+                    guess, secret_word, guessed_letters
+                )
+                mistakes += inc
+                print(msg)
+                # continue to end-of-round checks
             else:
-                # Full-word guess
-                if guess == secret_word:
-                    guessed_letters.update(secret_word)
-                    print("Fantastic — you guessed the full word!")
-                else:
-                    mistakes += 1
-                    print("That's not the correct word.")
+                # Treat anything longer than one character as a full-word guess
+                inc, msg = process_full_word_guess(
+                    guess, secret_word, guessed_letters
+                )
+                mistakes += inc
+                print(msg)
 
             # Check win/lose conditions after processing the guess so the final
             # state is displayed once (below) instead of being shown both before
